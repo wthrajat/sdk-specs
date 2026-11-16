@@ -115,7 +115,7 @@ means set whenever the SDK can determine the value. Events: "call" is `$mcp_tool
 | `$mcp_server_build` | all | string, 1 to 256 characters, an immutable build id (a commit SHA or image digest); rejected at configuration when out of range, never truncated or shrunk | may |
 | `$mcp_input_keys` | call | array of at most 20 entries: recorded top-level argument names, declared ones (the schema's and accepted aliases) sorted, then others sorted, then one `"[redacted]"` entry if room remains and a name was not recorded or exceeded 64 characters; injected names the tool does not declare are excluded | may |
 | `$mcp_input_aliases_used` | call | array of at most 20 sorted `"<alias>:<canonical>"` strings, each name at most 64 characters, one for each argument the agent sent only under an alias, naming the first alias present in the server's order | may |
-| `$mcp_feedback_<name>` | `$mcp_feedback` | a host-declared report argument's value: a string sanitized as free text, at most 2,048 characters; a number or boolean as is; other JSON as JSON text, sanitized as free text, within that limit; a value that does not match the declared type or enum is not sent | per field |
+| `$mcp_feedback_<name>` | `$mcp_feedback` | a host-declared report argument's value: a string sanitized as free text, at most 2,048 characters; a number sanitized as free text; a boolean as is; other JSON as JSON text, sanitized as free text, within that limit; a value that does not match the declared type or enum is not sent | per field |
 | `$mcp_parameters`, `$mcp_response` | call, listings | JSON; string values at most 32,768 characters, keys at most 256, arrays and objects at most 100 entries, nesting at most 10 levels | per Configuration |
 | `$mcp_session_id` | any | equal to `$session_id` | may |
 | `$mcp_client_name`, `$mcp_client_version`, `$mcp_protocol_version`, `$mcp_server_name`, `$mcp_server_version`, `$mcp_client_user_agent`, `$mcp_vendor_client` | all | string, at most 256 characters | known |
@@ -707,7 +707,10 @@ sending, the SDK SHALL:
   once any trailing run of `=` is set aside, is not empty and has first and last 1,024 characters all
   from one alphabet: base64 with `\r` and `\n`, because MIME and PEM base64 break lines, or base64url;
 - redact email addresses, IP addresses, Luhn-valid card numbers, US social security numbers, and phone
-  numbers from `$mcp_intent` and every property "Property reference" marks sanitized as free text.
+  numbers from `$mcp_intent` and every property "Property reference" marks sanitized as free text. A
+  number such a property holds, on its own or inside JSON text, is read as its digits written out with
+  no exponent; a number this pass would change becomes the string `"[redacted]"`, so JSON text stays
+  valid, and any other number stays a number.
 
 The personal data pass SHALL NOT apply to `$mcp_parameters`, `$mcp_response`, `$mcp_error_message`, or
 `$exception` values. They carry what the server's own tools received and returned, data the host
@@ -792,6 +795,13 @@ drops its `$exception`.
 - **THEN** the "$mcp_parameters" should contain "ada@example.com"
 - **AND** the "$mcp_response" should contain "ada@example.com"
 - **AND** the "$mcp_intent" should not contain "ada@example.com"
+
+#### Scenario: A card number in a number feedback field is redacted (@mcp_feedback_capable)
+- **GIVEN** an MCP server instrumented by the SDK with the feedback tool enabled and declared integer report arguments "reference" and "attempts"
+- **WHEN** an MCP client calls tool "send_feedback" with arguments `{"feedback_type": "issue", "summary": "checkout failed", "reference": 4111111111111111, "attempts": 3}`
+- **AND** the SDK is flushed
+- **THEN** the "$mcp_feedback" event's property "$mcp_feedback_reference" should be "[redacted]"
+- **AND** its property "$mcp_feedback_attempts" should be 3
 
 ### Requirement: Event size bounds
 
